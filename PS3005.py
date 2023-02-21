@@ -1,14 +1,6 @@
 import serial
 import pandas as pd
-import numpy as np
 import time
-from timeit import default_timer as timer
-import struct
-import random
-
-def small_check():
-    print(value_to_fixed_width_string_v(1.2345).encode())
-    print(type(value_to_fixed_width_string_i(3.45678).encode()))
 
 
 def value_to_fixed_width_string_v(value):
@@ -51,6 +43,22 @@ def value_to_fixed_width_string_i(value):
     return value_string
 
 
+def info_csv_print(row):
+    """
+    Prints the information of a row of the csv file
+
+    Parameters
+    ----------
+    row: pandas DF row
+
+    Returns
+    -------
+
+    """
+    print(f"Step: {row['Step']:.0f}, Uset(V): {row['Uset(V)']}, Iset(A): "
+          f"{row['Iset(A)']}, Duration(s): {row['Duration(s)']}")
+
+
 class LABPS3005DN:
     """
     Class handling the serial connection to the power supply.
@@ -66,7 +74,10 @@ class LABPS3005DN:
     iset
     output_on
     output_off
+    get_vset
+    get_iset
     get_status
+    update_status
     info_csv_print
     follow_csv
     """
@@ -116,7 +127,7 @@ class LABPS3005DN:
         self.write_serial(b'*IDN?')
         self.identification = self.serial.read_until()
         print(f'Connection: {self.identification}')
-        self.get_status()
+        self.update_status()
 
     def close_serial(self):
         """
@@ -190,14 +201,13 @@ class LABPS3005DN:
         if value > 30:
             raise ValueError(f'Value is larger than allowed voltage value. '
                              f'{value}V > 30V')
+
         value_string = value_to_fixed_width_string_v(value)
         value_encoded = value_string.encode()
         v_string = b''.join([b'VSET1:', value_encoded])
-        v_string_comp = b''.join([value_encoded, b'\n'])
-        # print(f'v_string: {v_string}, v_string_comp: {v_string_comp}')
-        while self.set_v != v_string_comp:
-            self.write_serial(v_string)
-            self.get_status()
+
+        self.write_serial(v_string)
+        self.update_status()
 
     def iset(self, value):
         """
@@ -215,14 +225,13 @@ class LABPS3005DN:
         if value > 5:
             raise ValueError(f'Value is larger than allowed current value. '
                              f'{value}A > 5A')
+
         value_string = value_to_fixed_width_string_i(value)
         value_encoded = value_string.encode()
         i_string = b''.join([b'ISET1:', value_encoded])
-        i_string_comp = b''.join([value_encoded, b'\n'])
-        # print(f'i_string: {i_string}, i_string_comp: {i_string_comp}')
-        while self.set_i != i_string_comp:
-            self.write_serial(i_string)
-            self.get_status()
+
+        self.write_serial(i_string)
+        self.update_status()
 
     def output_on(self):
         """
@@ -231,10 +240,9 @@ class LABPS3005DN:
         Returns
         -------
         """
-        while not self.on:
-            output_string = b'OUTPUT1'
-            self.write_serial(output_string)
-            self.get_status()
+        output_string = b'OUTPUT1'
+        self.write_serial(output_string)
+        self.update_status()
 
     def output_off(self):
         """
@@ -243,26 +251,69 @@ class LABPS3005DN:
         Returns
         -------
         """
-        while self.on:
-            output_string = b'OUTPUT0'
-            self.write_serial(output_string)
-            self.get_status()
+        output_string = b'OUTPUT0'
+        self.write_serial(output_string)
+        self.update_status()
 
-    def get_status(self, verbose=False):
+    def get_vset(self):
         """
-        Updates the status of the
+        Gets the set voltage level
+
+        Returns
+        -------
+        bytes
+            The set voltage value
+        """
+        self.write_serial(b'VSET1?')
+        vset = self.serial.read_until()
+        vset = float(vset.decode())
+        return vset
+
+    def get_iset(self):
+        """
+        Gets the set current level
+
+        Returns
+        -------
+        bytes
+            The set current value
+        """
+        self.write_serial(b'ISET1?')
+        iset = self.serial.read_until()
+        iset = float(iset.decode())
+        return iset
+
+    def get_status(self):
+        """
+        Gets the status.
+
+        Returns
+        -------
+        bytes
+            The status flags
+        """
+        # self.status = b''  # Don't think this is needed this any longer
+        # Can check for length of the serial read if multiple call are needed.
+        self.write_serial(b'STATUS?')
+        return self.serial.read_until()
+
+    def update_status(self, verbose=False):
+        """
+        Updates the status of the PSU. This means the three flags of the
+        status and set voltage and current levels.
+
+        Calls get_vset, get_iset and get_status
 
         Parameters
         ----------
         verbose: bool
+            For writing out the status afterwards.
 
         Returns
         -------
         """
-        self.status = b''
-        while len(self.status) == 0:
-            self.write_serial(b'STATUS?')
-            self.status = self.serial.read_until()
+        self.status = self.get_status()
+
         # 49 is the binary for 1 in this encoding
         if self.status[0] == 49:
             self.cv = True
@@ -277,20 +328,55 @@ class LABPS3005DN:
         else:
             self.ocp = False
 
-        self.write_serial(b'VSET1?')
-        self.set_v = self.serial.read_until()
-        # print(type(self.set_v))
-        self.write_serial(b'ISET1?')
-        self.set_i = self.serial.read_until()
+        self.set_v = self.get_vset()
+        self.set_i = self.get_iset()
+
         if verbose:
             print(f'STATUS: {self.status}, VSET: {self.set_v}, ISET: '
                   f'{self.set_i}')
 
-    def info_csv_print(self, row):
-        print(f"Step: {row['Step']:.0f}, Uset(V): {row['Uset(V)']}, Iset(A): "
-              f"{row['Iset(A)']}, Duration(s): {row['Duration(s)']}")
+    def get_vout(self):
+        """
+        Gets the voltage value output.
+
+        Returns
+        -------
+        float
+            The voltage output value
+        """
+        self.write_serial(b'VOUT1?')
+        vout = self.serial.read_until()
+        vout = float(vout.decode())
+        return vout
+
+    def get_iout(self):
+        """
+        Gets the current value output.
+
+        Returns
+        -------
+        float
+            The current output value
+        """
+        self.write_serial(b'IOUT1?')
+        iout = self.serial.read_until()
+        iout = float(iout.decode())
+        return iout
 
     def follow_csv(self, repetitions=1):
+        """
+        Follows the instructions of the loaded csv. If no csv then it
+        returns empty without doing anything.
+
+        Parameters
+        ----------
+        repetitions : int
+            Number of repetitions of the csv
+
+        Returns
+        -------
+
+        """
         if self.df is None:
             print('No sequence file loaded')
             return
@@ -302,15 +388,10 @@ class LABPS3005DN:
 
         for rep in range(repetitions):
             for index, row in self.df.iterrows():
-                self.info_csv_print(row)
+                info_csv_print(row)
                 self.vset(row['Uset(V)'])
                 self.iset(row['Iset(A)'])
-                time.sleep(row['Duration(s)']) # Old way
-
-                #start = timer()
-                #nd = timer()
-                #while end - start < row['Duration(s)']:
-                #    end = timer()
+                time.sleep(row['Duration(s)'])
 
 
 def check_of_class(port):
@@ -318,22 +399,33 @@ def check_of_class(port):
     lab.load_csv('SequenceFile.csv')
     # lab.follow_csv()
     lab.vset(0.00)
-    lab.get_status(verbose=True)
+    lab.update_status(verbose=True)
     lab.vset(5.17)
-    lab.get_status(verbose=True)
+    lab.update_status(verbose=True)
     lab.iset(0.00)
-    lab.get_status(verbose=True)
+    lab.update_status(verbose=True)
     lab.iset(1.47)
-    lab.get_status(verbose=True)
+    lab.update_status(verbose=True)
     lab.close_serial()
+
 
 def check_of_csv(port):
     lab = LABPS3005DN(port)
     lab.load_csv('SequenceFile.csv')
     lab.follow_csv()
 
+
+def iset_func(value):
+    value_string = value_to_fixed_width_string_i(value)
+    value_encoded = value_string.encode()
+    i_string = b''.join([b'ISET1:', value_encoded])
+    i_string_comp = b''.join([value_encoded, b'\n'])
+    print(f'i_string: {i_string}, i_string_comp: {i_string_comp}')
+    value_part = i_string_comp[0:5]
+    print(float(value_part.decode()))
+
+
 if __name__ == '__main__':
-    #check_of_csv(input('port: '))
-    small_check()
+    check_of_csv(input('port: '))
 
 
