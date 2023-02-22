@@ -59,7 +59,7 @@ def info_csv_print(row):
           f"{row['Iset(A)']}, Duration(s): {row['Duration(s)']}")
 
 
-class LABPS3005DN:
+class PSU:
     """
     Class handling the serial connection to the power supply.
 
@@ -78,6 +78,8 @@ class LABPS3005DN:
     get_iset
     get_status
     update_status
+    get_vout
+    get_iout
     info_csv_print
     follow_csv
     """
@@ -395,7 +397,7 @@ class LABPS3005DN:
 
 
 def check_of_class(port):
-    lab = LABPS3005DN(port)
+    lab = PSU(port)
     lab.load_csv('SequenceFile.csv')
     # lab.follow_csv()
     lab.vset(0.00)
@@ -410,7 +412,7 @@ def check_of_class(port):
 
 
 def check_of_csv(port):
-    lab = LABPS3005DN(port)
+    lab = PSU(port)
     lab.load_csv('SequenceFile.csv')
     lab.follow_csv()
 
