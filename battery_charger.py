@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 import PSU
 import yaml
 import pprint
@@ -16,6 +18,11 @@ class BatteryCharger:
         self.soc = None
         self.current = None
         self.voltage = None
+
+        # Plotting
+        self.time = []
+        self.voltage_history = []
+        self.current_history = []
 
     def choose_settings(self):
         # TODO: Break it up into smaller pieces and a more modular design
@@ -77,11 +84,32 @@ class BatteryCharger:
 
         self.charge_setup()
 
+        self.plot_graph()
+
         while self.charge_check():
             time.sleep(120 / self.conf['SOC_CR'][self.soc])
             self.charge_update()
+
+            self.update_data()
+            self.plot_graph()
+
         self.psu.output_off()
         print('Finished charging')
+
+    def update_data(self):
+        self.current_history.append(self.current)
+        self.voltage_history.append(self.voltage)
+
+    def plot_graph(self):
+        fig, ax1 = plt.subplots(1)
+        ax1.set_title(f'Battery charge {self.soc}%')
+        ax1.plot(self.current_history, color='r', label='Current')
+        ax1.set_xlabel('Time')
+        ax1.set_ylabel('Current (A)', color='red')
+        ax2 = ax1.twinx()
+        ax2.plot(self.voltage_history, color='b', label='Voltage')
+        ax2.set_ylabel('Voltage (V)', color='blue')
+        fig.show()
 
     def charge_update(self):
         self.battery_voltage = self.check_voltage()
