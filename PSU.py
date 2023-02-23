@@ -86,6 +86,7 @@ class PSU:
 
     def __init__(self, com, baudrate=9600, timeout=1, sleeptime=0.05):
         # TODO: Differentiate private and public variables
+        # TODO: Find a solution when the psu is off or unable to connect
         """
         Opens the serial port for communication and updates the status of
         the device.
@@ -129,6 +130,7 @@ class PSU:
         self.write_serial(b'*IDN?')
         self.identification = self.serial.read_until()
         print(f'Connection: {self.identification}')
+        self.output_off()
         self.update_status()
 
     def close_serial(self):
@@ -263,7 +265,7 @@ class PSU:
 
         Returns
         -------
-        bytes
+        float
             The set voltage value
         """
         self.write_serial(b'VSET1?')
@@ -277,7 +279,7 @@ class PSU:
 
         Returns
         -------
-        bytes
+        float
             The set current value
         """
         self.write_serial(b'ISET1?')
@@ -394,6 +396,44 @@ class PSU:
                 self.vset(row['Uset(V)'])
                 self.iset(row['Iset(A)'])
                 time.sleep(row['Duration(s)'])
+
+    def find_voltage_battery(self, safe_voltage=5, checking_current=0.001):
+        """
+        Finds the voltage of a battery or voltage source.
+
+        It limits the current, then sets the voltage and measures to voltage
+        over the battery. Returns to last set values afterwards.
+
+        Parameters
+        ----------
+        safe_voltage: float
+            The voltage level set during the check
+        checking_current
+            The current during the test
+
+        Returns
+        -------
+        float
+            Battery voltage
+        """
+        #  TODO: Find out if I can use 0 as current
+        on_before = self.on
+
+        old_iset = self.get_iset()
+        old_vset = self.get_vset()
+        self.iset(checking_current)
+        self.vset(safe_voltage)
+        if not on_before:
+            self.output_on()
+        time.sleep(0.5)
+        battery_voltage = self.get_vout()
+        if not on_before:
+            self.output_off()
+        self.vset(old_vset)
+        self.iset(old_iset)
+        return battery_voltage
+
+
 
 
 def check_of_class(port):
