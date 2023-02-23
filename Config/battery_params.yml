@@ -2,7 +2,7 @@
 Li-Ion:
   VoltageMax : 4.2
   VoltageMin : 2.8
-  Capacity : 650
+  Capacity : null # null ends up like None in python
   CChargeMax : 0.7
   CChargeMin : 0.3
   CChargeCutOff : 0.05
@@ -21,6 +21,7 @@ Li-Ion:
     100 : 4.19
 
   SOC_CR:
+    0: 0.4
     10 : 0.4
     20 : 0.4
     30 : 0.4
