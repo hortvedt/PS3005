@@ -185,8 +185,8 @@ class PSU:
         -------
         """
         while True:
-            input_string = input('Serial: ')
-            self.write_serial(input_string.encode())
+            input_string = input('Serial (no endchar): ')
+            self.write_serial(input_string.encode() + self.end_char)
             print(self.serial.read_until())
 
     def vset(self, value):
@@ -432,8 +432,6 @@ class PSU:
         self.vset(old_vset)
         self.iset(old_iset)
         return battery_voltage
-
-
 
 
 def check_of_class(port):
