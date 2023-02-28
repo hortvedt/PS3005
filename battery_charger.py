@@ -4,6 +4,7 @@ import PSU
 import yaml
 import pprint
 import time
+from datetime import datetime
 
 
 class BatteryCharger:
@@ -20,7 +21,7 @@ class BatteryCharger:
         self.voltage = None
 
         # Plotting
-        self.time = []
+        self.time_history = []
         self.voltage_history = []
         self.current_history = []
 
@@ -72,8 +73,6 @@ class BatteryCharger:
                 self.make_current_params()
 
     def charge(self):
-        # TODO: Implement a try except to make it turn off the output if failed
-        # TODO: Make it show the charging in a graph
         if not self.settings_chosen:
             print('Please set settings first.')
             return
@@ -83,33 +82,36 @@ class BatteryCharger:
             return
 
         self.charge_setup()
-
-        self.plot_graph()
+        plot_graph(self.soc, self.current_history, self.voltage_history)
 
         while self.charge_check():
             time.sleep(120 / self.conf['SOC_CR'][self.soc])
             self.charge_update()
 
             self.update_data()
-            self.plot_graph()
+            plot_graph(self.soc, self.current_history, self.voltage_history,
+                       self.time_history)
 
         self.psu.output_off()
         print('Finished charging')
 
+    def safe_charge(self):
+        try:
+            self.charge()
+        except ValueError as error:
+            self.psu.output_off()
+            print("Probably voltage or current set to be outside of allowed "
+                  "values or battery params not set correctly")
+            raise error
+        except Exception as error:
+            self.psu.output_off()
+            print(f"Unexpected {error}, {type(error)}")
+            raise error
+
     def update_data(self):
+        self.time_history.append(datetime.now())
         self.current_history.append(self.current)
         self.voltage_history.append(self.voltage)
-
-    def plot_graph(self):
-        fig, ax1 = plt.subplots(1)
-        ax1.set_title(f'Battery charge {self.soc}%')
-        ax1.plot(self.current_history, color='r', label='Current')
-        ax1.set_xlabel('Time')
-        ax1.set_ylabel('Current (A)', color='red')
-        ax2 = ax1.twinx()
-        ax2.plot(self.voltage_history, color='b', label='Voltage')
-        ax2.set_ylabel('Voltage (V)', color='blue')
-        fig.show()
 
     def charge_update(self):
         self.battery_voltage = self.check_voltage()
@@ -118,6 +120,7 @@ class BatteryCharger:
         self.iset(self.conf['SOC_Current'][self.soc])
         self.current = self.psu.get_iout()
         self.voltage = self.psu.get_vout()
+        self.update_data()
 
     def charge_check(self):
         if not self.voltage >= self.conf['VoltageMin']:
@@ -138,7 +141,6 @@ class BatteryCharger:
         self.psu.output_on()
         self.current = self.psu.get_iout()
         self.voltage = self.psu.get_vout()
-
 
     def ready_before_charge(self):
         battery_voltage = self.check_voltage()
@@ -181,17 +183,44 @@ class BatteryCharger:
                              f'{self.voltage}V <= {self.conf["VoltageMax"]}V')
 
     def iset(self, value):
-        if self.conf['CurrentChargeMin'] <= self.voltage <= self.conf[
-            'CurrentChargeMax']:
+        if self.conf['CurrentChargeMin'] <= self.voltage <= \
+                self.conf['CurrentChargeMax']:
             self.psu.iset(value)
         else:
             raise ValueError(f'Current not allowed. It should be '
                              f'{self.conf["CurrentChargeMin"]}A <= '
                              f'{self.current}A <= '
                              f'{self.conf["CurrentChargeMax"]}A')
+
+    def end(self):
+        self.psu.close_serial()
+
     def make_new_battery(self):
         raise NotImplementedError  # May never be
 
+
+def plot_graph(soc, current_history, voltage_history, time_history):
+    plt.style.use('dark_background')
+    fig, ax1 = plt.subplots(1)
+    ax1.set_title(f'Battery charge {soc}%')
+    current_line, = ax1.plot(time_history, current_history, color='r',
+                      label='Current')
+    ax1.set_xlabel('Time')
+    ax1.xaxis.axis_date()
+    ax1.set_ylabel('Current (A)', color='red')
+    ax2 = ax1.twinx()
+    voltage_line, = ax2.plot(time_history, voltage_history, color='b',
+                      label='Voltage')
+    ax2.set_ylabel('Voltage (V)', color='blue')
+    fig.autofmt_xdate()
+    fig.show()
+
+    # Experimenting
+    """
+    current_line.set_xdata(time_history.append(datetime.now()))
+    current_line.set_ydata(current_history.append(0.2))
+    voltage_line.set_ydata(voltage_history.append(4.1))
+    """
 
 def yaml_func():
     with open('Config/battery_params.yml', 'r') as file:
@@ -199,6 +228,19 @@ def yaml_func():
     print(conf['Li-Ion']['SOC_OCV'][0])
 
 
+def plotting_test():
+    soc = 40
+    current_history = [0.5, 0.45, 0.4, 0.35]
+    voltage_history = [3.7, 3.75, 3.80, 3.85]
+    time_history = []
+    for _ in range(4):
+        time_history.append(datetime.now())
+        time.sleep(1)
+    print(time_history)
+    plot_graph(soc, current_history, voltage_history, time_history)
+
 if __name__ == '__main__':
-    bat = BatteryCharger('COM7')
-    bat.choose_settings()
+    #bat = BatteryCharger('COM7')
+    #bat.choose_settings()
+    plotting_test()
+
