@@ -1,9 +1,11 @@
 import PSU
+import battery_charger
+import battery_charger as bc
 
 
 def interface():
-    print("Options:\n0 = quit\n1 = follow CSV\n2 = testCharger"
-          "\n3 = chargeBattery")
+    print("Options:\n0 = quit\n1 = follow CSV\n2 = chargeBattery"
+          "\n3 = testCharge\n4 = inputmodePSU\n")
     mode = input("Select one.\n")
 
     try:
@@ -19,9 +21,21 @@ def interface():
         psu.follow_csv(int(input('Number of repetitions: ')))
         psu.close_serial()
     if mode == 2:
-        raise NotImplementedError('testCharger is not implemented')
+        batcha = battery_charger.BatteryCharger(input('PORT: '))
+        batcha.choose_settings()
+        batcha.safe_charge()
+        batcha.end()
     if mode == 3:
-        raise NotImplementedError('batteryCharger is not implemented')
+        psu = PSU.PSU(input('PORT: '))
+        battery_voltage = psu.find_voltage_battery(input('Max battery '
+                                                         'voltage: '))
+        print(f'The battery voltage is {battery_voltage}V.')
+        psu.close_serial()
+    if mode == 4:
+        psu = psu = PSU.PSU(input('PORT: '))
+        psu.write_serial_continually()
+
+
 
 
 if __name__ == '__main__':
