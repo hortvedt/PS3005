@@ -1,0 +1,4 @@
+---
+Port : 'COM7'
+Battery : Ronda-Li-Ion
+Capacity : null # Capacity must be set in ether battery or charge
