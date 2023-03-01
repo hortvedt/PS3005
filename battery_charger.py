@@ -4,17 +4,18 @@ import yaml
 import pprint
 import time
 from datetime import datetime
-#  TODO: Document this whole battery charger part
+import pandas as pd
+import matplotlib.dates as mdates
 
 
 class BatteryCharger:
-    #  TODO: make it into Config here too
     """
     Class handling the serial connection to the power supply.
 
     Methods
     -------
     __init__
+    start_serial
     settings
     unsafe_charge
     charge
@@ -49,19 +50,37 @@ class BatteryCharger:
         self.current_history = []
         self.battery_voltage_history = []
 
-        # Experiment
+        # Setting up from the start if everything is ready
         if self.settings():
             self.start_serial(*args, **kwargs)
         else:
             print('Set settings and start serial manually.')
 
     def start_serial(self, *args, **kwargs):
+        """
+        Initializes the serial connection.
+
+        Parameters
+        ----------
+        args
+            To the serial.serial_for_url
+        kwargs
+            To the serial.serial_for_url
+
+        Returns
+        -------
+
+        """
         self.psu = PSU.PSU(self.port, *args, **kwargs)
         self.psu.output_off()
         self.started_serial = True
 
     def settings(self):
         """
+        Reads and check the settings. Returns if settings are set.
+
+        Capacity in battery_params overrule capacity in charge_params. It
+        must have one.
 
         Returns
         -------
@@ -95,7 +114,7 @@ class BatteryCharger:
         else:
             return False
 
-    def unsafe_charge(self, plotting=True):
+    def unsafe_charge(self, plotting=True, save_data=True):
         """
         Charges the battery. It checks for settings set, if the battery is
         in good condition
@@ -104,12 +123,13 @@ class BatteryCharger:
         ----------
         plotting : bool
             Enable plotting
+        save_data : bool
+            Enable saving csv
 
         Returns
         -------
 
         """
-        # TODO: Compute the amphours and energy charged.
         if not self.charge_setup_high_level():
             return
         if plotting:
@@ -129,7 +149,12 @@ class BatteryCharger:
         self.psu.output_off()
         print('Finished charging')
 
-    def charge(self, plotting=True):
+        if save_data:
+            save_data_csv(self.current_history, self.voltage_history,
+                          self.time_history, self.battery_voltage_history,
+                          self.charge_params['CSVFile'])
+
+    def charge(self, plotting=True, save_data=True):
         """
         Charges the battery, but in comparison to unsafe_charge, it turns
         off the output if anything goes wrong.
@@ -138,13 +163,15 @@ class BatteryCharger:
         ----------
         plotting : bool
             Enable plotting
+        save_data : bool
+            Enable saving csv
 
         Returns
         -------
 
         """
         try:
-            self.unsafe_charge(plotting)
+            self.unsafe_charge(plotting, save_data)
         except ValueError as error:
             self.psu.output_off()
             print("Probably voltage or current set to be outside of allowed "
@@ -300,8 +327,9 @@ class BatteryCharger:
         float
             The voltage of the battery.
         """
-        battery_voltage = self.psu.find_voltage_battery(self.battery_params['VoltageMax']
-                                                        , 0.000)
+        battery_voltage = self.psu.find_voltage_battery(self.battery_params[
+                                                            'VoltageMax'],
+                                                        0.000)
         return battery_voltage
 
     def vset(self, value):
@@ -317,7 +345,8 @@ class BatteryCharger:
         -------
 
         """
-        if self.battery_params['VoltageMin'] <= value <= self.battery_params['VoltageMax']:
+        if self.battery_params['VoltageMin'] <= value <= self.battery_params[
+                'VoltageMax']:
             self.psu.vset(value)
         else:
             raise ValueError(f'Voltage not allowed. It should be '
@@ -381,7 +410,8 @@ def plot_graph(soc, current_history, voltage_history, time_history,
     # TODO: Maybe return the figure instead of showing it here.
     plt.style.use('dark_background')
     fig, ax1 = plt.subplots(1)
-    ax1.set_title(f'Battery charge {soc}%')
+    fig.suptitle(f'Battery charge {soc}%')
+
     ax1.plot(time_history, current_history, color='b', label='Current')
     ax1.set_xlabel('Time')
     ax1.xaxis.axis_date()
@@ -394,10 +424,81 @@ def plot_graph(soc, current_history, voltage_history, time_history,
              label='Battery Voltage')
     ax2.set_ylabel('Voltage (V)', color='r')
 
+    ah, energy = amount_charged(current_history, voltage_history, time_history)
+    mah = 1000 * ah
+    ax1.set_title(f'Charged {mah:.0f}mAh and {energy:.0f}J')
+
+    my_fmt = mdates.DateFormatter("%H:%M")
+    ax1.xaxis.set_major_formatter(my_fmt)
+
     ax2.legend()
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.show()
+
+
+def amount_charged(current_history, voltage_history, time_history):
+    """
+    Gives the charge and energy given in Ah and J.
+
+    Parameters
+    ----------
+    current_history : list[float]
+        A list of charging currents.
+    voltage_history : list[float]
+        A list of charging voltages.
+    time_history : list[datetime]
+        A list of times for measurements.
+
+    Returns
+    -------
+    float
+        Charge charged in Ah.
+    float
+        Energy charged J.
+
+    """
+    ampere_hours = 0
+    energy = 0
+    for index in range(len(current_history) - 1):
+        delta_t = time_history[index + 1] - time_history[index]
+        seconds = delta_t.total_seconds()
+        hours = seconds / 3600
+        current = current_history[index]
+        voltage = voltage_history[index]
+
+        ampere_hours += hours * current
+        energy += seconds * current * voltage
+
+    return ampere_hours, energy
+
+
+def save_data_csv(current_history, voltage_history, time_history,
+                  battery_voltage_history, filename):
+    """
+
+    Parameters
+    ----------
+    current_history : list[float]
+        A list of charging currents.
+    voltage_history : list[float]
+        A list of charging voltages.
+    time_history : list[datetime]
+        A list of times for measurements.
+    battery_voltage_history : list[float]
+        A list of battery voltages.
+    filename : str
+        Name and or location of the file
+
+    Returns
+    -------
+
+    """
+    data_dict = {'Time': time_history, 'Current': current_history,
+                 'Charge Voltage': voltage_history,
+                 'Battery Voltage': battery_voltage_history}
+    df = pd.DataFrame(data_dict)
+    df.to_csv(filename)
 
 
 def yaml_func():
@@ -419,5 +520,21 @@ def plotting_test():
                battery_voltage_history)
 
 
+def save_data_test():
+    filename = 'Data/testCSV.csv'
+    current_history = [0.5, 0.45, 0.4, 0.35]
+    voltage_history = [3.7, 3.75, 3.80, 3.85]
+    battery_voltage_history = [3.2, 3.3, 3.3, 3.8]
+    time_history = []
+    for _ in range(4):
+        time_history.append(datetime.now())
+        time.sleep(1)
+    save_data_csv(current_history, voltage_history, time_history,
+                  battery_voltage_history, filename)
+    df = pd.read_csv(filename)
+    print(df)
+    print(df.info())
+
+
 if __name__ == '__main__':
-    plotting_test()
+    pass
