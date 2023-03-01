@@ -221,7 +221,8 @@ class BatteryCharger:
 
         """
         self.battery_voltage = self.check_voltage()
-        while self.battery_voltage > self.battery_params['SOC_OCV'][self.soc + 10]:
+        while self.battery_voltage > self.battery_params['SOC_OCV'][self.soc +
+                                                                    10]:
             self.soc += 10
         self.iset(self.battery_params['SOC_Current'][self.soc])
         self.current = self.psu.get_iout()
@@ -351,7 +352,8 @@ class BatteryCharger:
         else:
             raise ValueError(f'Voltage not allowed. It should be '
                              f'{self.battery_params["VoltageMin"]}V <= '
-                             f'{value}V <= {self.battery_params["VoltageMax"]}V')
+                             f'{value}V <= '
+                             f'{self.battery_params["VoltageMax"]}V')
 
     def iset(self, value):
         """
