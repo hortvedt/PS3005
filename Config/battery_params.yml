@@ -2,6 +2,7 @@
 Li-Ion:
   VoltageMax : 4.2
   VoltageMin : 2.8
+  VoltageNom : 3.7
   Capacity : null # null ends up like None in python
   CChargeMax : 0.7
   CChargeMin : 0.3
@@ -36,6 +37,7 @@ Li-Ion:
 Ronda-Li-Ion:
   VoltageMax : 3.65
   VoltageMin : 2.0
+  VoltageNom : 3.2
   Capacity : 0.600 # null ends up like None in python
   CChargeMax : 0.7
   CChargeMin : 0.3

@@ -446,8 +446,6 @@ class PSU:
 
 def check_of_class(port):
     lab = PSU(port)
-    lab.load_csv('SequenceFile.csv')
-    # lab.follow_csv()
     lab.vset(0.00)
     lab.update_status(verbose=True)
     lab.vset(5.17)
@@ -463,16 +461,6 @@ def check_of_csv(port):
     lab = PSU(port)
     lab.load_csv('SequenceFile.csv')
     lab.follow_csv()
-
-
-def iset_func(value):
-    value_string = value_to_fixed_width_string_i(value)
-    value_encoded = value_string.encode()
-    i_string = b''.join([b'ISET1:', value_encoded])
-    i_string_comp = b''.join([value_encoded, b'\n'])
-    print(f'i_string: {i_string}, i_string_comp: {i_string_comp}')
-    value_part = i_string_comp[0:5]
-    print(float(value_part.decode()))
 
 
 if __name__ == '__main__':

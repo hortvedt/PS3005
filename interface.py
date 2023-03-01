@@ -3,8 +3,8 @@ import battery_charger
 
 
 def interface():
-    print("Options:\n0 = quit\n1 = follow CSV\n2 = chargeBattery"
-          "\n3 = testCharge\n4 = inputmodePSU\n")
+    print("Options:\n0 = Quit\n1 = Follow CSV\n2 = Battery Charger"
+          "\n3 = Voltage of Battery\n4 = Free commands PSU\n")
     mode = input("Select one:\n")
 
     try:
@@ -30,7 +30,7 @@ def interface():
         print(f'The battery voltage is {battery_voltage}V.')
         psu.close_serial()
     if mode == 4:
-        psu = psu = PSU.PSU(input('PORT: '))
+        psu = PSU.PSU(input('PORT: '))
         psu.write_serial_continually()
 
 
