@@ -20,9 +20,8 @@ def interface():
         psu.follow_csv(int(input('Number of repetitions: ')))
         psu.close_serial()
     if mode == 2:
-        batcha = battery_charger.BatteryCharger(input('PORT: '))
-        batcha.choose_settings()
-        batcha.safe_charge()
+        batcha = battery_charger.BatteryCharger()
+        batcha.charge()
         batcha.end()
     if mode == 3:
         psu = PSU.PSU(input('PORT: '))
