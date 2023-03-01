@@ -466,6 +466,6 @@ def iset_func(value):
 
 
 if __name__ == '__main__':
-    check_of_csv(input('port: '))
+    pass
 
 

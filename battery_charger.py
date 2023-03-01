@@ -82,7 +82,9 @@ class BatteryCharger:
             return
 
         self.charge_setup()
-        plot_graph(self.soc, self.current_history, self.voltage_history)
+        self.update_data()
+        plot_graph(self.soc, self.current_history, self.voltage_history,
+                   self.time_history)
 
         while self.charge_check():
             time.sleep(120 / self.conf['SOC_CR'][self.soc])
@@ -171,25 +173,25 @@ class BatteryCharger:
 
     def check_voltage(self):
         battery_voltage = self.psu.find_voltage_battery(self.conf['VoltageMax']
-                                                        , 0.001)
+                                                        , 0.000)
         return battery_voltage
 
     def vset(self, value):
-        if self.conf['VoltageMin'] <= self.voltage <= self.conf['VoltageMax']:
+        if self.conf['VoltageMin'] <= value <= self.conf['VoltageMax']:
             self.psu.vset(value)
         else:
             raise ValueError(f'Voltage not allowed. It should be '
                              f'{self.conf["VoltageMin"]}V <= '
-                             f'{self.voltage}V <= {self.conf["VoltageMax"]}V')
+                             f'{value}V <= {self.conf["VoltageMax"]}V')
 
     def iset(self, value):
-        if self.conf['CurrentChargeMin'] <= self.voltage <= \
+        if self.conf['CurrentChargeMin'] <= value <= \
                 self.conf['CurrentChargeMax']:
             self.psu.iset(value)
         else:
             raise ValueError(f'Current not allowed. It should be '
                              f'{self.conf["CurrentChargeMin"]}A <= '
-                             f'{self.current}A <= '
+                             f'{value}A <= '
                              f'{self.conf["CurrentChargeMax"]}A')
 
     def end(self):
@@ -215,12 +217,6 @@ def plot_graph(soc, current_history, voltage_history, time_history):
     fig.autofmt_xdate()
     fig.show()
 
-    # Experimenting
-    """
-    current_line.set_xdata(time_history.append(datetime.now()))
-    current_line.set_ydata(current_history.append(0.2))
-    voltage_line.set_ydata(voltage_history.append(4.1))
-    """
 
 def yaml_func():
     with open('Config/battery_params.yml', 'r') as file:
@@ -239,8 +235,7 @@ def plotting_test():
     print(time_history)
     plot_graph(soc, current_history, voltage_history, time_history)
 
+
 if __name__ == '__main__':
-    #bat = BatteryCharger('COM7')
-    #bat.choose_settings()
-    plotting_test()
+    pass
 
