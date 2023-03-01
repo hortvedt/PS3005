@@ -1,6 +1,7 @@
 import serial
 import pandas as pd
 import time
+#  TODO: Check if ocp is possible with the usb interface.
 
 
 def value_to_fixed_width_string_v(value):
@@ -82,11 +83,11 @@ class PSU:
     get_iout
     info_csv_print
     follow_csv
+    find_voltage_battery
     """
 
-    def __init__(self, com, baudrate=9600, timeout=1, sleeptime=0.05):
+    def __init__(self, com, baudrate=9600, timeout=1, serial_wait_time=0.05):
         # TODO: Differentiate private and public variables
-        # TODO: Find a solution when the psu is off or unable to connect
         """
         Opens the serial port for communication and updates the status of
         the device.
@@ -99,7 +100,7 @@ class PSU:
             The baudrate of the PSU
         timeout : float
             Timeout for communication
-        sleeptime : float
+        serial_wait_time : float
             The time between sent commands.
 
         Attributes
@@ -111,7 +112,7 @@ class PSU:
         self.cv : bool
         self.on : bool
         self.ocp : bool
-        self.sleeptime : float
+        self.serial_wait_time : float
         self.end_char : bytes
         self.serial : serial connection
         """
@@ -122,15 +123,20 @@ class PSU:
         self.cv = None
         self.on = None
         self.ocp = None
-        self.sleeptime = sleeptime
+        self.serial_wait_time = serial_wait_time
         self.end_char = b'\\r\\n'  # /b'/n'
         self.identification = None
+
         self.serial = serial.serial_for_url(com, baudrate=baudrate,
                                             timeout=timeout)
         self.write_serial(b'*IDN?')
         self.identification = self.serial.read_until()
+        if self.identification == b'':
+            raise ConnectionError('The powersupply is off or not responding')
         print(f'Connection: {self.identification}')
         self.output_off()
+
+        # It updates status in output_off, but it is good to have
         self.update_status()
 
     def close_serial(self):
@@ -170,10 +176,10 @@ class PSU:
         Returns
         -------
         """
-        time.sleep(self.sleeptime)
+        time.sleep(self.serial_wait_time)
         self.serial.write(finished_command_no_endchar + self.end_char)
         self.serial.flush()
-        time.sleep(self.sleeptime)
+        time.sleep(self.serial_wait_time)
 
     def write_serial_continually(self):
         """
@@ -397,26 +403,30 @@ class PSU:
                 self.iset(row['Iset(A)'])
                 time.sleep(row['Duration(s)'])
 
-    def find_voltage_battery(self, safe_voltage=5, checking_current=0.001):
+    def find_voltage_battery(self, safe_voltage=5, checking_current=0.000,
+                             wait_for_measurement=0.5):
         """
         Finds the voltage of a battery or voltage source.
 
         It limits the current, then sets the voltage and measures to voltage
         over the battery. Returns to last set values afterwards.
 
+        Seems to work with a current value of 0.000.
+
         Parameters
         ----------
-        safe_voltage: float
+        safe_voltage : float
             The voltage level set during the check
-        checking_current
+        checking_current : float
             The current during the test
+        wait_for_measurement : float
+            Time to wait for the
 
         Returns
         -------
         float
             Battery voltage
         """
-        #  TODO: Find out if I can use 0 as current
         on_before = self.on
 
         old_iset = self.get_iset()
@@ -425,7 +435,7 @@ class PSU:
         self.vset(safe_voltage)
         if not on_before:
             self.output_on()
-        time.sleep(0.5)
+        time.sleep(wait_for_measurement)
         battery_voltage = self.get_vout()
         if not on_before:
             self.output_off()
@@ -466,6 +476,6 @@ def iset_func(value):
 
 
 if __name__ == '__main__':
-    pass
+    check_of_csv('COM7')
 
 
