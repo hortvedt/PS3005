@@ -1,20 +1,43 @@
 import matplotlib.pyplot as plt
-
 import PSU
 import yaml
 import pprint
 import time
 from datetime import datetime
+#  TODO: Document this whole battery charger part
 
 
 class BatteryCharger:
     #  TODO: make it into Config here too
-    def __init__(self, port, *args, **kwargs):
-        self.psu = PSU.PSU(port, *args, **kwargs)
-        self.psu.output_off()
-        self.settings_chosen = False
+    """
+    Class handling the serial connection to the power supply.
+
+    Methods
+    -------
+    __init__
+    settings
+    unsafe_charge
+    charge
+    update_data
+    charge_check
+    charge_update
+    charge_setup_high_level
+    charge_setup_low_level
+    ready_before_charge
+    make_current_params
+    check_voltage
+    vset
+    iset
+    end
+    """
+    def __init__(self, *args, **kwargs):
+        self.psu = None
+        self.port = None
+        self.settings_confirmed = False
+        self.started_serial = False
         self.battery = None
-        self.conf = None
+        self.battery_params = None
+        self.charge_params = None
         self.battery_voltage = None
         self.soc = None
         self.current = None
@@ -24,82 +47,104 @@ class BatteryCharger:
         self.time_history = []
         self.voltage_history = []
         self.current_history = []
+        self.battery_voltage_history = []
 
-    def choose_settings(self):
-        # TODO: Break it up into smaller pieces and a more modular design
-        print("You can quit the settings by typing 'Quit'")
+        # Experiment
+        if self.settings():
+            self.start_serial(*args, **kwargs)
+        else:
+            print('Set settings and start serial manually.')
+
+    def start_serial(self, *args, **kwargs):
+        self.psu = PSU.PSU(self.port, *args, **kwargs)
+        self.psu.output_off()
+        self.started_serial = True
+
+    def settings(self):
+        """
+
+        Returns
+        -------
+        bool
+            If settings are set or not.
+        """
+        with open('Config/charge_params.yml', 'r') as file:
+            charge_params = yaml.safe_load(file)
         with open('Config/battery_params.yml', 'r') as file:
-            conf = yaml.safe_load(file)
-        print(f'Your choices of batteries are:')
-        first_choice = ['New', 'Quit']
-        for key, value in conf.items():
-            first_choice.append(key)
-        for item in first_choice:
-            print(f'  - {item}')
-        while True:
-            battery = input('Choose battery: ')
-            if battery in first_choice:
-                break
-            print(f'{battery} is not an option.')
-        if battery == 'Quit':
-            return
-        if battery == 'New':
-            self.make_new_battery()
-        elif battery in conf:
-            while conf[battery]['Capacity'] is None:
-                print('Capacity is not set in battery parameter')
-                capacity = float(input(f'Capacity of the {battery} battery ['
-                                       f'Ah]: '))
-                conf[battery]['Capacity'] = capacity
-            print('The settings are: ')
-            pprint.pprint(conf[battery])
-            while True:
-                shure = input('Are you ok with these settings (y_, n): ')
-                if shure == '' or shure == 'y' or shure == 'n' or \
-                    shure == 'Quit':
-                    break
-                else:
-                    print(f'{shure} is not an option.')
-            if shure == 'Quit':
-                return
-            if shure == 'n':
-                print('Please change configfiles and try again.')
-                return
-            if shure == '' or shure == 'y':
-                print('Settings chosen.')
-                self.settings_chosen = True
-                self.battery = battery
-                self.conf = conf[battery]
-                self.make_current_params()
+            battery_params = yaml.safe_load(file)
 
-    def charge(self):
-        if not self.settings_chosen:
-            print('Please set settings first.')
-            return
+        self.battery = charge_params['Battery']
+        self.port = charge_params['Port']
 
-        if not self.ready_before_charge():
-            print('Check battery or parameters.')
-            return
+        if battery_params[self.battery]['Capacity'] is None:
+            if charge_params['Capacity'] is None:
+                raise ValueError('Capacity is not set.')
+            else:
+                battery_params[self.battery]['Capacity'] = \
+                    charge_params['Capacity']
 
-        self.charge_setup()
-        self.update_data()
-        plot_graph(self.soc, self.current_history, self.voltage_history,
-                   self.time_history)
+        self.battery_params = battery_params[self.battery]
+        self.make_current_params()
+
+        print('The settings are: ')
+        pprint.pprint(self.battery_params)
+        sure = input('Are you ok with these settings (y, n_): ')
+        if sure.lower() == 'y':
+            self.settings_confirmed = True
+            return True
+        else:
+            return False
+
+    def unsafe_charge(self, plotting=True):
+        """
+        Charges the battery. It checks for settings set, if the battery is
+        in good condition
+
+        Parameters
+        ----------
+        plotting : bool
+            Enable plotting
+
+        Returns
+        -------
+
+        """
+        # TODO: Compute the amphours and energy charged.
+        if not self.charge_setup_high_level():
+            return
+        if plotting:
+            plot_graph(self.soc, self.current_history, self.voltage_history,
+                       self.time_history, self.battery_voltage_history)
 
         while self.charge_check():
-            time.sleep(120 / self.conf['SOC_CR'][self.soc])
+            time.sleep(120 / self.battery_params['SOC_CR'][self.soc])
             self.charge_update()
 
             self.update_data()
-            plot_graph(self.soc, self.current_history, self.voltage_history,
-                       self.time_history)
+            if plotting:
+                plot_graph(self.soc, self.current_history,
+                           self.voltage_history, self.time_history,
+                           self.battery_voltage_history)
 
         self.psu.output_off()
         print('Finished charging')
 
-    def safe_charge(self):
+    def charge(self, plotting=True):
+        """
+        Charges the battery, but in comparison to unsafe_charge, it turns
+        off the output if anything goes wrong.
+
+        Parameters
+        ----------
+        plotting : bool
+            Enable plotting
+
+        Returns
+        -------
+
+        """
         try:
-            self.charge()
+            self.unsafe_charge(plotting)
         except ValueError as error:
             self.psu.output_off()
             print("Probably voltage or current set to be outside of allowed "
@@ -111,110 +156,247 @@ class BatteryCharger:
             raise error
 
     def update_data(self):
+        """
+        Updates the time-, current-, charging voltage- and battery
+        voltage-history.
+
+        Returns
+        -------
+
+        """
         self.time_history.append(datetime.now())
         self.current_history.append(self.current)
         self.voltage_history.append(self.voltage)
+        self.battery_voltage_history.append(self.battery_voltage)
+
+    def charge_check(self):
+        """
+        Checks if the charging should continue.
+
+        Returns
+        -------
+        bool
+            Continue charging.
+        """
+        if not self.battery_voltage >= self.battery_params['VoltageMin']:
+            return False
+        if not self.current >= self.battery_params['CurrentChargeCutOff']:
+            return False
+        return True
 
     def charge_update(self):
+        """
+        Updates the values needed for charging; computing SOC, setting the
+        current and getting the voltage and current outputs.
+
+        Returns
+        -------
+
+        """
         self.battery_voltage = self.check_voltage()
-        while self.battery_voltage > self.conf['SOC_OCV'][self.soc + 10]:
+        while self.battery_voltage > self.battery_params['SOC_OCV'][self.soc + 10]:
             self.soc += 10
-        self.iset(self.conf['SOC_Current'][self.soc])
+        self.iset(self.battery_params['SOC_Current'][self.soc])
         self.current = self.psu.get_iout()
         self.voltage = self.psu.get_vout()
         self.update_data()
 
-    def charge_check(self):
-        if not self.voltage >= self.conf['VoltageMin']:
+    def charge_setup_high_level(self):
+        """
+        All setup needed before charging.
+
+        Returns
+        -------
+        bool
+            If ready for charging.
+        """
+        if not self.settings_confirmed:
+            print('Please set settings first.')
             return False
-        if not self.current >= self.conf['CurrentChargeCutOff']:
+
+        if not self.started_serial:
+            print('Please start serial first.')
             return False
+
+        if not self.ready_before_charge():
+            print('Check battery or parameters.')
+            return False
+
+        self.charge_setup_low_level()
+        self.update_data()
         return True
 
-    def charge_setup(self):
+    def charge_setup_low_level(self):
+        """
+        Does the setup for the charge, computing SOC, safely setting the
+        voltage- and current-values and getting the voltage and current
+        outputs.
+
+        Returns
+        -------
+
+        """
         soc = 0
-        while self.battery_voltage > self.conf['SOC_OCV'][soc + 10]:
+        while self.battery_voltage > self.battery_params['SOC_OCV'][soc + 10]:
             soc += 10
         self.soc = soc
 
         self.psu.output_off()
-        self.iset(self.conf['SOC_Current'][soc])
-        self.vset(self.conf['VoltageMax'])
+        self.iset(self.battery_params['SOC_Current'][soc])
+        self.vset(self.battery_params['VoltageMax'])
         self.psu.output_on()
         self.current = self.psu.get_iout()
         self.voltage = self.psu.get_vout()
 
     def ready_before_charge(self):
+        """
+        Checks battery against over-voltage and under-voltage
+
+        Returns
+        -------
+        bool
+            If battery is ready for charge or not
+        """
         battery_voltage = self.check_voltage()
         self.battery_voltage = battery_voltage
-        if battery_voltage < self.conf['VoltageMin']:
+        if battery_voltage < self.battery_params['VoltageMin']:
             print(f'The battery voltage is too low.\nBattery voltage: '
-                  f'{battery_voltage}V < {self.conf["VoltageMin"]}V')
+                  f'{battery_voltage}V < {self.battery_params["VoltageMin"]}V')
             return False
-        if battery_voltage > self.conf['VoltageMax']:
+        if battery_voltage > self.battery_params['VoltageMax']:
             print(f'The battery voltage is too high.\nBattery voltage: '
-                  f'{battery_voltage}V > {self.conf["VoltageMax"]}V')
+                  f'{battery_voltage}V > {self.battery_params["VoltageMax"]}V')
             return False
         return True
 
     def make_current_params(self):
+        """
+        Makes current parameters from the c-value parameters.
+
+        Returns
+        -------
+
+        """
         soc_current = {}
         for i in range(11):
-            soc_current[i*10] = self.conf['SOC_CR'][i*10] * self.conf[
-                'Capacity']
-        self.conf['SOC_Current'] = soc_current
-
-        self.conf['CurrentChargeCutOff'] = self.conf['CChargeCutOff'] * \
-                                           self.conf['Capacity']
-        self.conf['CurrentChargeMax'] = self.conf['CChargeMax'] * \
-                                        self.conf['Capacity']
-        self.conf['CurrentChargeMin'] = self.conf['CChargeCutOff'] * \
-                                           self.conf['Capacity']
+            soc_current[i*10] = self.battery_params['SOC_CR'][i * 10] * \
+                                self.battery_params['Capacity']
+        self.battery_params['SOC_Current'] = soc_current
+        self.battery_params['CurrentChargeCutOff'] = \
+            self.battery_params['CChargeCutOff'] * \
+            self.battery_params['Capacity']
+        self.battery_params['CurrentChargeMax'] = \
+            self.battery_params['CChargeMax'] * self.battery_params['Capacity']
+        self.battery_params['CurrentChargeMin'] = \
+            self.battery_params['CChargeCutOff'] * \
+            self.battery_params['Capacity']
 
     def check_voltage(self):
-        battery_voltage = self.psu.find_voltage_battery(self.conf['VoltageMax']
+        """
+        Checks battery voltage with parameters.
+
+        Returns
+        -------
+        float
+            The voltage of the battery.
+        """
+        battery_voltage = self.psu.find_voltage_battery(self.battery_params['VoltageMax']
                                                         , 0.000)
         return battery_voltage
 
     def vset(self, value):
-        if self.conf['VoltageMin'] <= value <= self.conf['VoltageMax']:
+        """
+        Sets the voltage of the PSU but with the constraints from the
+        battery parameters.
+        Parameters
+        ----------
+        value : float
+            Voltage value for the PSU.
+
+        Returns
+        -------
+
+        """
+        if self.battery_params['VoltageMin'] <= value <= self.battery_params['VoltageMax']:
             self.psu.vset(value)
         else:
             raise ValueError(f'Voltage not allowed. It should be '
-                             f'{self.conf["VoltageMin"]}V <= '
-                             f'{value}V <= {self.conf["VoltageMax"]}V')
+                             f'{self.battery_params["VoltageMin"]}V <= '
+                             f'{value}V <= {self.battery_params["VoltageMax"]}V')
 
     def iset(self, value):
-        if self.conf['CurrentChargeMin'] <= value <= \
-                self.conf['CurrentChargeMax']:
+        """
+        Sets the current of the PSU but with the constraints from the
+        battery parameters.
+        Parameters
+        ----------
+        value : float
+            Current value for the PSU.
+
+        Returns
+        -------
+
+        """
+        if self.battery_params['CurrentChargeMin'] <= value <= \
+                self.battery_params['CurrentChargeMax']:
             self.psu.iset(value)
         else:
             raise ValueError(f'Current not allowed. It should be '
-                             f'{self.conf["CurrentChargeMin"]}A <= '
+                             f'{self.battery_params["CurrentChargeMin"]}A <= '
                              f'{value}A <= '
-                             f'{self.conf["CurrentChargeMax"]}A')
+                             f'{self.battery_params["CurrentChargeMax"]}A')
 
     def end(self):
+        """
+        An easier way to access the close serial command of the PSU.
+
+        Returns
+        -------
+
+        """
         self.psu.close_serial()
 
-    def make_new_battery(self):
-        raise NotImplementedError  # May never be
 
+def plot_graph(soc, current_history, voltage_history, time_history,
+               battery_voltage_history):
+    """
 
-def plot_graph(soc, current_history, voltage_history, time_history):
+    Parameters
+    ----------
+    soc : int
+        The state of charge on percent. Must be a multiple of 10.
+    current_history : list[float]
+        A list of charging currents.
+    voltage_history : list[float]
+        A list of charging voltages.
+    time_history : list[datetime]
+        A list of times for measurements.
+    battery_voltage_history : list[float]
+        A list of battery voltages.
+
+    Returns
+    -------
+
+    """
+    # TODO: Maybe return the figure instead of showing it here.
     plt.style.use('dark_background')
     fig, ax1 = plt.subplots(1)
     ax1.set_title(f'Battery charge {soc}%')
-    current_line, = ax1.plot(time_history, current_history, color='r',
-                      label='Current')
+    ax1.plot(time_history, current_history, color='b', label='Current')
     ax1.set_xlabel('Time')
     ax1.xaxis.axis_date()
-    ax1.set_ylabel('Current (A)', color='red')
+    ax1.set_ylabel('Current (A)', color='b')
+
     ax2 = ax1.twinx()
-    voltage_line, = ax2.plot(time_history, voltage_history, color='b',
-                      label='Voltage')
-    ax2.set_ylabel('Voltage (V)', color='blue')
+    ax2.plot(time_history, voltage_history, color='r', label='Charging '
+                                                             'Voltage')
+    ax2.plot(time_history, battery_voltage_history, color='orange',
+             label='Battery Voltage')
+    ax2.set_ylabel('Voltage (V)', color='r')
+
+    ax2.legend()
     fig.autofmt_xdate()
+    fig.tight_layout()
     fig.show()
 
 
@@ -228,14 +410,14 @@ def plotting_test():
     soc = 40
     current_history = [0.5, 0.45, 0.4, 0.35]
     voltage_history = [3.7, 3.75, 3.80, 3.85]
+    battery_voltage_history = [3.2, 3.3, 3.3, 3.8]
     time_history = []
     for _ in range(4):
         time_history.append(datetime.now())
         time.sleep(1)
-    print(time_history)
-    plot_graph(soc, current_history, voltage_history, time_history)
+    plot_graph(soc, current_history, voltage_history, time_history,
+               battery_voltage_history)
 
 
 if __name__ == '__main__':
-    pass
-
+    plotting_test()
