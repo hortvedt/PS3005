@@ -3,6 +3,7 @@ Li-Ion:
   VoltageMax : 4.2
   VoltageMin : 2.8
   VoltageNom : 3.7
+  VoltageChargeCutOff : 4.25
   Capacity : null # null ends up like None in python
   CChargeMax : 0.7
   CChargeMin : 0.3
@@ -38,6 +39,7 @@ Ronda-Li-Ion:
   VoltageMax : 3.65
   VoltageMin : 2.0
   VoltageNom : 3.2
+  VoltageChargeCutOff : 3.7
   Capacity : 0.600 # null ends up like None in python
   CChargeMax : 0.7
   CChargeMin : 0.3
@@ -68,3 +70,40 @@ Ronda-Li-Ion:
     80 : 0.6
     90 : 0.4
     100 : 0.4
+
+12V-Lead-Acid-Sealed: # https://batteryuniversity.com/article/bu-403-charging-lead-acid
+  VoltageMax : 14.40
+  VoltageMin : 10.0
+  VoltageNom : 12
+  VoltageChargeCutOff : 13.8
+  Capacity : null # null ends up like None in python
+  CChargeMax : 0.8
+  CChargeMin : 0.3
+  CChargeCutOff : 0.05
+
+  SOC_OCV: # https://footprinthero.com/lead-acid-battery-voltage-charts
+    0 : 11.59
+    10 : 11.63
+    20 : 11.76
+    30 : 11.87
+    40 : 11.97
+    50 : 12.07
+    60 : 12.18
+    70 : 12.29
+    80 : 12.41
+    90 : 12.53
+    100 : 12.64
+
+  SOC_CR:
+    0: 0.8
+    10 : 0.8
+    20 : 0.8
+    30 : 0.8
+    40 : 0.7
+    50 : 0.6
+    60 : 0.5
+    70 : 0.4
+    80 : 0.3
+    90 : 0.3
+    100 : 0.3
+
