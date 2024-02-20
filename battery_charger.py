@@ -209,6 +209,9 @@ class BatteryCharger:
             return False
         if not self.current >= self.battery_params['CurrentChargeCutOff']:
             return False
+        if not self.battery_voltage >= self.battery_params[
+                'VoltageChargeCutOff']:
+            return False
         return True
 
     def charge_update(self):
