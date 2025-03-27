@@ -1,6 +1,9 @@
 # PS3005
 A way to use Velleman LABPS3005DN, Tekpower TP3005P and maybe other usb-controller PSUs.
 
+It is a fork from my now unavailable github account. 
+
+
 It is now a battery charger with control for every 10% of the batteries charge.
 It plots and keeps track of energy usage.
 ### Resorces
